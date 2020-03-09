@@ -668,6 +668,7 @@ public final class ItemUtil {
 
         switch(item.getType()) {
             case COAL:
+            case CHARCOAL:
             case COAL_BLOCK:
             case WOODEN_AXE:
             case WOODEN_HOE:
@@ -709,6 +710,8 @@ public final class ItemUtil {
             case BOW:
             case LADDER:
             case SCAFFOLDING:
+            case DRIED_KELP_BLOCK:
+            case BAMBOO:
                 return true;
             default:
                 return Tag.ITEMS_BOATS.isTagged(item.getType())
