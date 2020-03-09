@@ -429,8 +429,39 @@ public class Elevator extends AbstractCraftBookMechanic {
                             // See https://dev.enginehub.org/youtrack/issue/CRAFTBOOK-3464
                             // Thus we'll simply teleport the player to the ceiling in that case.
                             if (isSolidBlockOccludingMovement(p, playerVerticalMovement)) {
-                                finishElevatingPlayer(p);
-                                return;
+
+                                double distanceToDestination = Math.abs(floor.getY() - p.getLocation().getY());
+                                int minGapSize = 3;
+
+                                if (distanceToDestination < minGapSize) {
+                                    finishElevatingPlayer(p);
+                                } else {
+                                    Location gapTarget = null;
+                                    int airBlocksFound = 0;
+
+                                    for (int i = 0; i < distanceToDestination; i++) {
+                                        boolean isSolidBlock = p.getLocation().clone().add(0, i, 0).getBlock().getType().isSolid();
+
+                                        if(!isSolidBlock)
+                                        {
+                                            airBlocksFound++;
+                                            if(airBlocksFound >= minGapSize) {
+                                                gapTarget = p.getLocation().clone().add(0, i, 0);
+                                            }
+                                        } else {
+                                            airBlocksFound = 0;
+                                        }
+
+                                        if(gapTarget != null) {
+                                            p.teleport(gapTarget);
+                                            break;
+                                        }
+                                    }
+                                    if(gapTarget == null) {
+                                        finishElevatingPlayer(p);
+                                        return;
+                                    }
+                                }
                             } else {
                                 p.setVelocity(new Vector(0, elevatorMoveSpeed, 0));
                             }
