@@ -56,6 +56,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.UUID;
+import java.util.logging.Level;
 
 /**
  * The default elevator mechanism -- wall signs in a vertical column that teleport the player vertically when triggered.
@@ -384,7 +385,7 @@ public class Elevator extends AbstractCraftBookMechanic {
                 bukkitPlayer.teleport(lastLocation);
             }
 
-            double initialDistanceToDestination = Math.abs(floor.getY() - player.getLocation().getY());
+            double initialDistanceToDestination = Math.abs(newLocation.getY() - player.getLocation().getY());
             playerDistanceToTarget.put(player.getUniqueId(), initialDistanceToDestination);
 
             new BukkitRunnable(){
@@ -424,16 +425,7 @@ public class Elevator extends AbstractCraftBookMechanic {
                         return;
                     }
 
-                    Direction verticalDirection = ElevatorUtil.getVerticalDirection(p.getLocation(), newLocation);
-
-                    double playerDirectedVelocity = elevatorMoveSpeed;
-                    if(verticalDirection == Direction.DOWN)
-                        playerDirectedVelocity = -elevatorMoveSpeed;
-
-                    p.setVelocity(new Vector(0, playerDirectedVelocity, 0));
-
-                    if (ElevatorUtil.isSolidBlockOccludingMovement(p, verticalDirection) || isPlayerStuck(p, floor))
-                        p.teleport(p.getLocation().add(0, playerDirectedVelocity, 0));
+                    movePlayerInElevator(p, newLocation);
 
                     lastLocation.setY(p.getLocation().getY());
                 }
@@ -464,20 +456,34 @@ public class Elevator extends AbstractCraftBookMechanic {
         }
     }
 
-    private boolean isPlayerStuck(Player p, Block floor)
+    private void movePlayerInElevator(Player p, Location newLocation)
+    {
+        Direction verticalDirection = ElevatorUtil.getVerticalDirection(p.getLocation(), newLocation);
+
+        double playerDirectedVelocity = elevatorMoveSpeed;
+
+        if(verticalDirection == Direction.DOWN)
+            playerDirectedVelocity = -elevatorMoveSpeed;
+
+        p.setVelocity(new Vector(0, playerDirectedVelocity, 0));
+
+        if (ElevatorUtil.isSolidBlockOccludingMovement(p, verticalDirection) || isPlayerStuck(p, newLocation))
+            p.teleport(p.getLocation().add(0, playerDirectedVelocity, 0));
+    }
+
+    private boolean isPlayerStuck(Player p, Location newLocation)
     {
         if(playerDistanceToTarget.containsKey(p.getUniqueId())) {
 
-            double currentDistance = Math.abs(floor.getY() - p.getLocation().getY());
-
+            double currentDistance = Math.abs(newLocation.getY() - p.getLocation().getY());
             double expectedDistance = playerDistanceToTarget.get(p.getUniqueId()) - elevatorMoveSpeed;
 
             playerDistanceToTarget.put(p.getUniqueId(), expectedDistance);
 
             double tolerance = 1.5 * elevatorMoveSpeed;
 
-            if(expectedDistance < currentDistance - tolerance) {
-                playerDistanceToTarget.put(p.getUniqueId(), currentDistance - tolerance);
+            if(Math.abs(currentDistance - expectedDistance) > tolerance) {
+                playerDistanceToTarget.put(p.getUniqueId(), currentDistance);
                 return true;
             }
         }
