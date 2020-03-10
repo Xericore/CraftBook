@@ -531,15 +531,18 @@ public class Elevator extends AbstractCraftBookMechanic {
     {
         if(playerDistanceToTarget.containsKey(p.getUniqueId())) {
 
-            double currentTickDistance =
-                    Math.abs(floor.getY() - p.getLocation().getY());
+            double currentDistance = Math.abs(floor.getY() - p.getLocation().getY());
 
             double expectedDistance = playerDistanceToTarget.get(p.getUniqueId()) - elevatorMoveSpeed;
 
             playerDistanceToTarget.put(p.getUniqueId(), expectedDistance);
 
             double tolerance = 2*elevatorMoveSpeed;
-            return Math.abs(currentTickDistance - expectedDistance) > tolerance;
+
+            if(expectedDistance < currentDistance - tolerance) {
+                playerDistanceToTarget.put(p.getUniqueId(), currentDistance - tolerance);
+                return true;
+            }
         }
         return false;
     }
