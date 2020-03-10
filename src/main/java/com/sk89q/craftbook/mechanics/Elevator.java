@@ -56,7 +56,6 @@ import org.bukkit.util.Vector;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -168,7 +167,7 @@ public class Elevator extends AbstractCraftBookMechanic {
         }
     }
 
-    private enum Direction {
+    public enum Direction {
         NONE, UP, DOWN, RECV
     }
 
@@ -296,7 +295,8 @@ public class Elevator extends AbstractCraftBookMechanic {
         while (true) {
             destination = destination.getRelative(shift);
             Direction derp = isLift(destination);
-            if (derp != Direction.NONE && isValidLift(CraftBookBukkitUtil.toChangedSign(clickedBlock), CraftBookBukkitUtil.toChangedSign(destination)))
+            if (derp != Direction.NONE && ElevatorUtil.isValidLift(CraftBookBukkitUtil.toChangedSign(clickedBlock),
+                    CraftBookBukkitUtil.toChangedSign(destination)))
                 break; // found it!
 
             if (destination.getY() == clickedBlock.getY()) {
@@ -425,7 +425,7 @@ public class Elevator extends AbstractCraftBookMechanic {
                         return;
                     }
 
-                    Direction verticalDirection = getVerticalDirection(p.getLocation(), newLocation);
+                    Direction verticalDirection = ElevatorUtil.getVerticalDirection(p.getLocation(), newLocation);
                     double distanceToDestination = Math.abs(floor.getY() - p.getLocation().getY());
 
                     double playerDirectedVelocity = elevatorMoveSpeed;
@@ -438,7 +438,7 @@ public class Elevator extends AbstractCraftBookMechanic {
                             // the teleport but rather cause the player to "swim" in mid air.
                             // See https://dev.enginehub.org/youtrack/issue/CRAFTBOOK-3464
                             // Thus we'll simply teleport the player to the ceiling in that case.
-                            if (isSolidBlockOccludingMovement(p, verticalDirection)) {
+                            if (ElevatorUtil.isSolidBlockOccludingMovement(p, verticalDirection)) {
 
                                 int minGapSize = 3;
 
@@ -446,7 +446,8 @@ public class Elevator extends AbstractCraftBookMechanic {
                                     finishElevatingPlayer(p);
                                 } else {
                                     boolean didPlayerMoveToGap =
-                                            tryMovePlayerToNextGapAbove(p, distanceToDestination, minGapSize);
+                                            ElevatorUtil.tryMovePlayerToNextGapAbove(p, distanceToDestination,
+                                                    minGapSize);
 
                                     if(!didPlayerMoveToGap) {
                                         finishElevatingPlayer(p);
@@ -459,7 +460,7 @@ public class Elevator extends AbstractCraftBookMechanic {
                             break;
                         case DOWN:
                             p.setVelocity(new Vector(0, playerDirectedVelocity, 0));
-                            if (isSolidBlockOccludingMovement(p, verticalDirection))
+                            if (ElevatorUtil.isSolidBlockOccludingMovement(p, verticalDirection))
                                 p.teleport(p.getLocation().add(0, playerDirectedVelocity, 0));
                             break;
                         default:
@@ -477,7 +478,7 @@ public class Elevator extends AbstractCraftBookMechanic {
 
                 private void finishElevatingPlayer(Player p) {
                     p.teleport(newLocation);
-                    teleportFinish(player, destination, shift);
+                    ElevatorUtil.teleportFinish(player, destination, shift);
                     disableFlightMode(p);
                     setPassengerIfPlayerWasInVehicle(player);
                     playerDistanceToTarget.remove(p.getUniqueId());
@@ -497,34 +498,8 @@ public class Elevator extends AbstractCraftBookMechanic {
                 player.setPosition(BukkitAdapter.adapt(newLocation).toVector(), newLocation.getPitch(), newLocation.getYaw());
             }
 
-            teleportFinish(player, destination, shift);
+            ElevatorUtil.teleportFinish(player, destination, shift);
         }
-    }
-
-    private static boolean tryMovePlayerToNextGapAbove(Player p, double distanceToDestination, int minGapSize)
-    {
-        Location gapTarget = null;
-        int airBlocksFound = 0;
-
-        for (int i = 0; i < distanceToDestination; i++) {
-            boolean isSolidBlock = p.getLocation().clone().add(0, i, 0).getBlock().getType().isSolid();
-
-            if(!isSolidBlock)
-            {
-                airBlocksFound++;
-                if(airBlocksFound >= minGapSize) {
-                    gapTarget = p.getLocation().clone().add(0, i, 0);
-                }
-            } else {
-                airBlocksFound = 0;
-            }
-
-            if(gapTarget != null) {
-                p.teleport(gapTarget);
-                return true;
-            }
-        }
-        return false;
     }
 
     private boolean isPlayerStuck(Player p, Block floor)
@@ -547,7 +522,7 @@ public class Elevator extends AbstractCraftBookMechanic {
         return false;
     }
 
-    private void enableFlightMode(Player p) {
+    private static void enableFlightMode(Player p) {
         p.setAllowFlight(true);
         p.setFlying(true);
         p.setFallDistance(0f);
@@ -563,21 +538,6 @@ public class Elevator extends AbstractCraftBookMechanic {
         flyingPlayers.remove(p.getUniqueId());
     }
 
-    private Direction getVerticalDirection(Location from, Location to)
-    {
-        if(from.getY() < to.getY())
-            return Direction.UP;
-        else if (from.getY() > to.getY())
-            return Direction.DOWN;
-        else
-            return Direction.NONE;
-    }
-
-    private boolean isSolidBlockOccludingMovement(Player p, Direction direction) {
-        int verticalDistance = direction == Direction.UP ? 2 : -1;
-        return p.getLocation().clone().add(0, verticalDistance, 0).getBlock().getType().isSolid();
-    }
-
     private void setPassengerIfPlayerWasInVehicle(CraftBookPlayer player) {
 
         boolean wasPlayerInVehicle = playerVehicles.containsKey(player.getUniqueId());
@@ -589,42 +549,6 @@ public class Elevator extends AbstractCraftBookMechanic {
         }
     }
 
-    public static void teleportFinish(CraftBookPlayer player, Block destination, BlockFace shift) {
-        // Now, we want to read the sign so we can tell the player
-        // his or her floor, but as that may not be avilable, we can
-        // just print a generic message
-        ChangedSign info = null;
-        if (!SignUtil.isSign(destination)) {
-            if (Tag.BUTTONS.isTagged(destination.getType())) {
-                Switch attachable = (Switch) destination.getBlockData();
-                if (SignUtil.isSign(destination.getRelative(attachable.getFacing().getOppositeFace(), 2)))
-                    info = CraftBookBukkitUtil.toChangedSign(destination.getRelative(attachable.getFacing().getOppositeFace(), 2));
-            }
-            if (info == null)
-                return;
-        } else
-            info = CraftBookBukkitUtil.toChangedSign(destination);
-        String title = info.getLines()[0];
-        if (!title.isEmpty()) {
-            player.print(player.translate("mech.lift.floor") + ": " + title);
-        } else {
-            player.print(shift.getModY() > 0 ? "mech.lift.up" : "mech.lift.down");
-        }
-    }
-
-    public static boolean isValidLift(ChangedSign start, ChangedSign stop) {
-
-        if (start == null || stop == null) return true;
-        if (start.getLine(2).toLowerCase(Locale.ENGLISH).startsWith("to:")) {
-            try {
-                return stop.getLine(0).equalsIgnoreCase(RegexUtil.COLON_PATTERN.split(start.getLine(2))[0].trim());
-            } catch (Exception e) {
-                start.setLine(2, "");
-                return false;
-            }
-        } else return true;
-    }
-
     private Elevator.Direction isLift(Block block) {
 
         if (!SignUtil.isSign(block)) {
@@ -634,23 +558,12 @@ public class Elevator extends AbstractCraftBookMechanic {
                     return Direction.NONE;
                 Block sign = block.getRelative(b.getFacing().getOppositeFace(), 2);
                 if (SignUtil.isSign(sign))
-                    return isLift(CraftBookBukkitUtil.toChangedSign(sign));
+                    return ElevatorUtil.isLift(CraftBookBukkitUtil.toChangedSign(sign));
             }
             return Direction.NONE;
         }
 
-        return isLift(CraftBookBukkitUtil.toChangedSign(block));
-    }
-
-    private static Elevator.Direction isLift(ChangedSign sign) {
-        // if you were really feeling frisky this could definitely
-        // be optomized by converting the string to a char[] and then
-        // doing work
-
-        if (sign.getLine(1).equalsIgnoreCase("[Lift Up]")) return Direction.UP;
-        if (sign.getLine(1).equalsIgnoreCase("[Lift Down]")) return Direction.DOWN;
-        if (sign.getLine(1).equalsIgnoreCase("[Lift]")) return Direction.RECV;
-        return Direction.NONE;
+        return ElevatorUtil.isLift(CraftBookBukkitUtil.toChangedSign(block));
     }
 
     private boolean elevatorAllowRedstone;
