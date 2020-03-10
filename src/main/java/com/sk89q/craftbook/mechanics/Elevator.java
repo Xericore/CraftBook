@@ -69,12 +69,14 @@ public class Elevator extends AbstractCraftBookMechanic {
 
     private HashSet<UUID> flyingPlayers;
     private HashMap<UUID, Vehicle> playerVehicles;
+    private HashMap<UUID, Double> playerDistanceToTarget;
 
     @Override
     public boolean enable() {
         if(elevatorSlowMove) {
             flyingPlayers = new HashSet<>();
             playerVehicles = new HashMap<>();
+            playerDistanceToTarget = new HashMap<>();
         }
 
         return true;
@@ -383,6 +385,9 @@ public class Elevator extends AbstractCraftBookMechanic {
                 bukkitPlayer.teleport(lastLocation);
             }
 
+            double initialDistanceToDestination = Math.abs(floor.getY() - player.getLocation().getY());
+            playerDistanceToTarget.put(player.getUniqueId(), initialDistanceToDestination);
+
             new BukkitRunnable(){
                 @Override
                 public void run () {
@@ -420,58 +425,42 @@ public class Elevator extends AbstractCraftBookMechanic {
                         return;
                     }
 
-                    Direction playerVerticalMovement = getVerticalDirection(p.getLocation(), newLocation);
+                    Direction verticalDirection = getVerticalDirection(p.getLocation(), newLocation);
+                    double distanceToDestination = Math.abs(floor.getY() - p.getLocation().getY());
 
-                    switch (playerVerticalMovement) {
+                    double playerDirectedVelocity = elevatorMoveSpeed;
+                    if(verticalDirection == Direction.DOWN)
+                        playerDirectedVelocity = -elevatorMoveSpeed;
+
+                    switch (verticalDirection) {
                         case UP:
                             // Teleporting the player up inside solid blocks will not execute
                             // the teleport but rather cause the player to "swim" in mid air.
                             // See https://dev.enginehub.org/youtrack/issue/CRAFTBOOK-3464
                             // Thus we'll simply teleport the player to the ceiling in that case.
-                            if (isSolidBlockOccludingMovement(p, playerVerticalMovement)) {
+                            if (isSolidBlockOccludingMovement(p, verticalDirection)) {
 
-                                double distanceToDestination = Math.abs(floor.getY() - p.getLocation().getY());
                                 int minGapSize = 3;
 
                                 if (distanceToDestination < minGapSize) {
                                     finishElevatingPlayer(p);
                                 } else {
-                                    Location gapTarget = null;
-                                    int airBlocksFound = 0;
+                                    boolean didPlayerMoveToGap =
+                                            tryMovePlayerToNextGapAbove(p, distanceToDestination, minGapSize);
 
-                                    for (int i = 0; i < distanceToDestination; i++) {
-                                        boolean isSolidBlock = p.getLocation().clone().add(0, i, 0).getBlock().getType().isSolid();
-
-                                        if(!isSolidBlock)
-                                        {
-                                            airBlocksFound++;
-                                            if(airBlocksFound >= minGapSize) {
-                                                gapTarget = p.getLocation().clone().add(0, i, 0);
-                                            }
-                                        } else {
-                                            airBlocksFound = 0;
-                                        }
-
-                                        if(gapTarget != null) {
-                                            p.teleport(gapTarget);
-                                            break;
-                                        }
-                                    }
-                                    if(gapTarget == null) {
+                                    if(!didPlayerMoveToGap) {
                                         finishElevatingPlayer(p);
                                         return;
                                     }
                                 }
                             } else {
-                                p.setVelocity(new Vector(0, elevatorMoveSpeed, 0));
+                                p.setVelocity(new Vector(0, playerDirectedVelocity, 0));
                             }
                             break;
                         case DOWN:
-                            // Contrary to moving the player up,
-                            // moving down into solid blocks works just fine.
-                            p.setVelocity(new Vector(0, -elevatorMoveSpeed, 0));
-                            if (isSolidBlockOccludingMovement(p, playerVerticalMovement))
-                                p.teleport(p.getLocation().add(0, -elevatorMoveSpeed, 0));
+                            p.setVelocity(new Vector(0, playerDirectedVelocity, 0));
+                            if (isSolidBlockOccludingMovement(p, verticalDirection))
+                                p.teleport(p.getLocation().add(0, playerDirectedVelocity, 0));
                             break;
                         default:
                             // Player is not moving
@@ -480,6 +469,10 @@ public class Elevator extends AbstractCraftBookMechanic {
                     }
 
                     lastLocation.setY(p.getLocation().getY());
+
+                    if(isPlayerStuck(p, floor)) {
+                        p.teleport(p.getLocation().add(0, playerDirectedVelocity, 0));
+                    }
                 }
 
                 private void finishElevatingPlayer(Player p) {
@@ -487,6 +480,7 @@ public class Elevator extends AbstractCraftBookMechanic {
                     teleportFinish(player, destination, shift);
                     disableFlightMode(p);
                     setPassengerIfPlayerWasInVehicle(player);
+                    playerDistanceToTarget.remove(p.getUniqueId());
                     cancel();
                 }
 
@@ -505,6 +499,49 @@ public class Elevator extends AbstractCraftBookMechanic {
 
             teleportFinish(player, destination, shift);
         }
+    }
+
+    private static boolean tryMovePlayerToNextGapAbove(Player p, double distanceToDestination, int minGapSize)
+    {
+        Location gapTarget = null;
+        int airBlocksFound = 0;
+
+        for (int i = 0; i < distanceToDestination; i++) {
+            boolean isSolidBlock = p.getLocation().clone().add(0, i, 0).getBlock().getType().isSolid();
+
+            if(!isSolidBlock)
+            {
+                airBlocksFound++;
+                if(airBlocksFound >= minGapSize) {
+                    gapTarget = p.getLocation().clone().add(0, i, 0);
+                }
+            } else {
+                airBlocksFound = 0;
+            }
+
+            if(gapTarget != null) {
+                p.teleport(gapTarget);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isPlayerStuck(Player p, Block floor)
+    {
+        if(playerDistanceToTarget.containsKey(p.getUniqueId())) {
+
+            double currentTickDistance =
+                    Math.abs(floor.getY() - p.getLocation().getY());
+
+            double expectedDistance = playerDistanceToTarget.get(p.getUniqueId()) - elevatorMoveSpeed;
+
+            playerDistanceToTarget.put(p.getUniqueId(), expectedDistance);
+
+            double tolerance = 2*elevatorMoveSpeed;
+            return Math.abs(currentTickDistance - expectedDistance) > tolerance;
+        }
+        return false;
     }
 
     private void enableFlightMode(Player p) {
