@@ -54,32 +54,6 @@ public class ElevatorUtil
         return p.getLocation().clone().add(0, verticalDistance, 0).getBlock().getType().isSolid();
     }
 
-    public static boolean tryMovePlayerToNextGapAbove(Player p, double distanceToDestination, int minGapSize)
-    {
-        Location gapTarget = null;
-        int airBlocksFound = 0;
-
-        for (int i = 0; i < distanceToDestination; i++) {
-            boolean isSolidBlock = p.getLocation().clone().add(0, i, 0).getBlock().getType().isSolid();
-
-            if(!isSolidBlock)
-            {
-                airBlocksFound++;
-                if(airBlocksFound >= minGapSize) {
-                    gapTarget = p.getLocation().clone().add(0, i, 0);
-                }
-            } else {
-                airBlocksFound = 0;
-            }
-
-            if(gapTarget != null) {
-                p.teleport(gapTarget);
-                return true;
-            }
-        }
-        return false;
-    }
-
     public static void teleportFinish(CraftBookPlayer player, Block destination, BlockFace shift) {
         // Now, we want to read the sign so we can tell the player
         // his or her floor, but as that may not be avilable, we can

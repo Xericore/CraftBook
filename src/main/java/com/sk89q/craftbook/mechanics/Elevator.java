@@ -17,15 +17,14 @@
 package com.sk89q.craftbook.mechanics;
 
 import com.sk89q.craftbook.AbstractCraftBookMechanic;
-import com.sk89q.craftbook.ChangedSign;
 import com.sk89q.craftbook.CraftBookPlayer;
 import com.sk89q.craftbook.bukkit.BukkitCraftBookPlayer;
 import com.sk89q.craftbook.bukkit.CraftBookPlugin;
 import com.sk89q.craftbook.bukkit.util.CraftBookBukkitUtil;
+import com.sk89q.craftbook.util.ElevatorUtil;
 import com.sk89q.craftbook.util.EventUtil;
 import com.sk89q.craftbook.util.LocationUtil;
 import com.sk89q.craftbook.util.ProtectionUtil;
-import com.sk89q.craftbook.util.RegexUtil;
 import com.sk89q.craftbook.util.SignUtil;
 import com.sk89q.craftbook.util.events.SignClickEvent;
 import com.sk89q.craftbook.util.events.SourcedBlockRedstoneEvent;
@@ -406,7 +405,7 @@ public class Elevator extends AbstractCraftBookMechanic {
                     newLocation.setPitch(p.getLocation().getPitch());
                     newLocation.setYaw(p.getLocation().getYaw());
 
-                    boolean isPlayerAlmostAtDestination = Math.abs(floor.getY() - p.getLocation().getY()) < 0.7;
+                    boolean isPlayerAlmostAtDestination = Math.abs(floor.getY() - p.getLocation().getY()) <= 1;
 
                     if(isPlayerAlmostAtDestination) {
                         finishElevatingPlayer(p);
@@ -426,54 +425,17 @@ public class Elevator extends AbstractCraftBookMechanic {
                     }
 
                     Direction verticalDirection = ElevatorUtil.getVerticalDirection(p.getLocation(), newLocation);
-                    double distanceToDestination = Math.abs(floor.getY() - p.getLocation().getY());
 
                     double playerDirectedVelocity = elevatorMoveSpeed;
                     if(verticalDirection == Direction.DOWN)
                         playerDirectedVelocity = -elevatorMoveSpeed;
 
-                    switch (verticalDirection) {
-                        case UP:
-                            // Teleporting the player up inside solid blocks will not execute
-                            // the teleport but rather cause the player to "swim" in mid air.
-                            // See https://dev.enginehub.org/youtrack/issue/CRAFTBOOK-3464
-                            // Thus we'll simply teleport the player to the ceiling in that case.
-                            if (ElevatorUtil.isSolidBlockOccludingMovement(p, verticalDirection)) {
+                    p.setVelocity(new Vector(0, playerDirectedVelocity, 0));
 
-                                int minGapSize = 3;
-
-                                if (distanceToDestination < minGapSize) {
-                                    finishElevatingPlayer(p);
-                                } else {
-                                    boolean didPlayerMoveToGap =
-                                            ElevatorUtil.tryMovePlayerToNextGapAbove(p, distanceToDestination,
-                                                    minGapSize);
-
-                                    if(!didPlayerMoveToGap) {
-                                        finishElevatingPlayer(p);
-                                        return;
-                                    }
-                                }
-                            } else {
-                                p.setVelocity(new Vector(0, playerDirectedVelocity, 0));
-                            }
-                            break;
-                        case DOWN:
-                            p.setVelocity(new Vector(0, playerDirectedVelocity, 0));
-                            if (ElevatorUtil.isSolidBlockOccludingMovement(p, verticalDirection))
-                                p.teleport(p.getLocation().add(0, playerDirectedVelocity, 0));
-                            break;
-                        default:
-                            // Player is not moving
-                            finishElevatingPlayer(p);
-                            return;
-                    }
+                    if (ElevatorUtil.isSolidBlockOccludingMovement(p, verticalDirection) || isPlayerStuck(p, floor))
+                        p.teleport(p.getLocation().add(0, playerDirectedVelocity, 0));
 
                     lastLocation.setY(p.getLocation().getY());
-
-                    if(isPlayerStuck(p, floor)) {
-                        p.teleport(p.getLocation().add(0, playerDirectedVelocity, 0));
-                    }
                 }
 
                 private void finishElevatingPlayer(Player p) {
@@ -512,7 +474,7 @@ public class Elevator extends AbstractCraftBookMechanic {
 
             playerDistanceToTarget.put(p.getUniqueId(), expectedDistance);
 
-            double tolerance = 2*elevatorMoveSpeed;
+            double tolerance = 1.5 * elevatorMoveSpeed;
 
             if(expectedDistance < currentDistance - tolerance) {
                 playerDistanceToTarget.put(p.getUniqueId(), currentDistance - tolerance);
